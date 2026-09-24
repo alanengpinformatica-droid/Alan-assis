@@ -1,0 +1,39 @@
+name: Gerar APK
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Descompactar o projeto
+        run: |
+          for z in *.zip; do unzip -o "$z" -d projeto; done
+          echo "RAIZ=$(dirname $(find projeto -name settings.gradle.kts | head -1))" >> $GITHUB_ENV
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Rodar os testes
+        working-directory: ${{ env.RAIZ }}
+        run: gradle testDebugUnitTest --no-daemon
+
+      - name: Compilar o APK
+        working-directory: ${{ env.RAIZ }}
+        run: gradle assembleDebug --no-daemon
+
+      - name: Publicar o APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: alan-assistant-apk
+          path: ${{ env.RAIZ }}/app/build/outputs/apk/debug/app-debug.apk
