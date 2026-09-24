@@ -1,3 +1,4 @@
+
 name: Gerar APK
 
 on:
@@ -24,16 +25,47 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Rodar os testes
-        working-directory: ${{ env.RAIZ }}
-        run: gradle testDebugUnitTest --no-daemon
-
       - name: Compilar o APK
+        id: build
+        continue-on-error: true
         working-directory: ${{ env.RAIZ }}
-        run: gradle assembleDebug --no-daemon
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --console=plain 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+      - name: Resumo dos erros
+        if: steps.build.outcome != 'success'
+        run: |
+          {
+            echo "## Erros da compilação"
+            echo ""
+            echo '```'
+            grep -E "^e: |error: |What went wrong|Caused by|Could not|Unresolved" \
+              "$GITHUB_WORKSPACE/build.log" | head -80
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Guardar o log completo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: log-da-compilacao
+          path: build.log
+          if-no-files-found: ignore
 
       - name: Publicar o APK
+        if: steps.build.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: alan-assistant-apk
           path: ${{ env.RAIZ }}/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Rodar os testes do núcleo
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        working-directory: ${{ env.RAIZ }}
+        run: gradle testDebugUnitTest --no-daemon --console=plain
+
+      - name: Encerrar com falha se a compilação quebrou
+        if: steps.build.outcome != 'success'
+        run: exit 1
